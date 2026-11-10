@@ -1,29 +1,29 @@
 # kctx
 
-Переключение Kubernetes-контекстов с группировкой по клиенту и TUI-поиском.
+Switch Kubernetes contexts with client grouping and a searchable TUI.
 
-Имена вида `клиент/кластер` (`matchsystems.com/dc3`) группируются автоматически.
-Источник правды — обычный kubeconfig (Lens/kubectl читают его как есть).
+Names like `client/cluster` (`matchsystems.com/dc3`) are grouped automatically.
+The source of truth is a normal kubeconfig — Lens and kubectl read it as usual.
 
-## Установка
+## Install
 
 ```bash
 go install github.com/eugene-panin/kctx/cmd/kctx@latest
-# или из checkout:
+# or from a checkout:
 go build -o kctx ./cmd/kctx && mv kctx "$(go env GOPATH)/bin/"
-kctx completion zsh > "${fpath[1]}/_kctx"   # опционально
+kctx completion zsh > "${fpath[1]}/_kctx"   # optional
 ```
 
-## Использование
+## Usage
 
 ```bash
-kctx                 # TUI: фильтр, recent, избранное
+kctx                 # TUI: filter, recent, favorites
 kctx ls
 kctx use NAME
 kctx current
 kctx clients
 
-# добавить из файла или буфера
+# add from a file or the clipboard
 kctx add ./new.yml --client acme --name prod
 pbpaste | kctx add - --client acme --name prod --use --check
 
@@ -36,13 +36,13 @@ kctx fav acme/prod
 
 ### TUI
 
-| клавиша | действие |
+| key | action |
 |---|---|
-| enter | переключить контекст |
-| p | вставить kubeconfig из буфера |
-| n | задать namespace |
-| f | в избранное / убрать |
-| esc / q | выход |
+| enter | switch context |
+| p | paste kubeconfig from clipboard |
+| n | set namespace |
+| f | toggle favorite |
+| esc / q | quit |
 
-Флаги: `--kubeconfig`, `--plain`, `--json`, `--no-input`.
-Состояние (recent/favorites): `~/.local/state/kctx`.
+Flags: `--kubeconfig`, `--plain`, `--json`, `--no-input`.  
+State (recent/favorites): `~/.local/state/kctx`.
