@@ -2,6 +2,8 @@ package kube
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
@@ -156,6 +158,7 @@ func validDNSLabel(s string) bool {
 }
 
 // Export builds a self-contained kubeconfig with only the named contexts.
+// File-backed credentials (CA/cert/key paths, token files) are inlined.
 func Export(explicitPath string, names []string) (*clientcmdapi.Config, error) {
 	if len(names) == 0 {
 		return nil, fmt.Errorf("at least one context is required")
@@ -186,5 +189,32 @@ func Export(explicitPath string, names []string) (*clientcmdapi.Config, error) {
 		out.Contexts[name] = newCtx
 	}
 	out.CurrentContext = names[0]
+	if err := inlineFileCredentials(out); err != nil {
+		return nil, err
+	}
 	return out, nil
+}
+
+func inlineFileCredentials(cfg *clientcmdapi.Config) error {
+	if err := clientcmdapi.FlattenConfig(cfg); err != nil {
+		return fmt.Errorf("inline credentials: %w", err)
+	}
+	for name, user := range cfg.AuthInfos {
+		if user == nil || user.TokenFile == "" || user.Token != "" {
+			continue
+		}
+		base := filepath.Dir(user.LocationOfOrigin)
+		path := user.TokenFile
+		if !filepath.IsAbs(path) {
+			path = filepath.Join(base, path)
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return fmt.Errorf("inline token file for %q: %w", name, err)
+		}
+		user.Token = strings.TrimSpace(string(data))
+		user.TokenFile = ""
+		cfg.AuthInfos[name] = user
+	}
+	return nil
 }

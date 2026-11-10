@@ -1,6 +1,8 @@
 package kube
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -82,6 +84,54 @@ func TestMoveSanitizesExtraSlash(t *testing.T) {
 	}
 	if _, ok := loaded.Contexts["acme/prod/v2"]; ok {
 		t.Fatal("raw multi-slash name should not exist")
+	}
+}
+
+func TestExportInlinesFileCredentials(t *testing.T) {
+	dir := t.TempDir()
+	ca := filepath.Join(dir, "ca.crt")
+	cert := filepath.Join(dir, "client.crt")
+	key := filepath.Join(dir, "client.key")
+	tok := filepath.Join(dir, "token")
+	for path, body := range map[string]string{
+		ca: "CA-DATA", cert: "CERT-DATA", key: "KEY-DATA", tok: "tok-secret",
+	} {
+		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cfg := clientcmdapi.NewConfig()
+	cfg.Clusters["c"] = &clientcmdapi.Cluster{
+		Server:               "https://x",
+		CertificateAuthority: ca,
+		LocationOfOrigin:     filepath.Join(dir, "cfg"),
+	}
+	cfg.AuthInfos["c"] = &clientcmdapi.AuthInfo{
+		ClientCertificate: cert,
+		ClientKey:         key,
+		TokenFile:         tok,
+		LocationOfOrigin:  filepath.Join(dir, "cfg"),
+	}
+	cfg.Contexts["acme/prod"] = &clientcmdapi.Context{Cluster: "c", AuthInfo: "c"}
+	dest := writeCfg(t, dir, "dest", cfg)
+
+	out, err := Export(dest, []string{"acme/prod"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cl := out.Clusters["acme/prod"]
+	us := out.AuthInfos["acme/prod"]
+	if cl.CertificateAuthority != "" || string(cl.CertificateAuthorityData) != "CA-DATA" {
+		t.Fatalf("ca not inlined: path=%q data=%q", cl.CertificateAuthority, cl.CertificateAuthorityData)
+	}
+	if us.ClientCertificate != "" || string(us.ClientCertificateData) != "CERT-DATA" {
+		t.Fatalf("cert not inlined: %#v", us)
+	}
+	if us.ClientKey != "" || string(us.ClientKeyData) != "KEY-DATA" {
+		t.Fatalf("key not inlined: %#v", us)
+	}
+	if us.TokenFile != "" || us.Token != "tok-secret" {
+		t.Fatalf("token not inlined: token=%q file=%q", us.Token, us.TokenFile)
 	}
 }
 

@@ -33,7 +33,8 @@ kctx completion bash|zsh|fish     shell completions
 ## mv / ns / export / check / fav
 - `mv` требует `to` вида `client/cluster`; тащит cluster/user keys; обновляет current
 - `ns` без записи только читает; `-` сбрасывает namespace
-- `export` — self-contained kubeconfig, credentials на stdout (не логировать)
+- `export` — self-contained kubeconfig (path-based CA/cert/key/token inlined), credentials на stdout (не логировать)
+- recent/favorites: `$XDG_STATE_HOME/kctx` с `flock` на запись
 - `check` — ClientSet Discovery ServerVersion, `--timeout` (default 10s), exit 1 если fail
 - `fav` / recent в `$XDG_STATE_HOME/kctx` (иначе `~/.local/state/kctx`)
 

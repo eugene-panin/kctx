@@ -2,9 +2,12 @@ package recent
 
 import (
 	"bufio"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"golang.org/x/sys/unix"
 )
 
 const maxRecent = 10
@@ -29,17 +32,22 @@ func Touch(name string) error {
 	if name == "" {
 		return nil
 	}
-	list, _ := List()
-	out := []string{name}
-	for _, n := range list {
-		if n != name {
-			out = append(out, n)
+	return withLock(recentPath(), func() error {
+		list, err := readLines(recentPath())
+		if err != nil {
+			return err
 		}
-		if len(out) >= maxRecent {
-			break
+		out := []string{name}
+		for _, n := range list {
+			if n != name {
+				out = append(out, n)
+			}
+			if len(out) >= maxRecent {
+				break
+			}
 		}
-	}
-	return writeLines(recentPath(), out)
+		return writeLines(recentPath(), out)
+	})
 }
 
 // List returns recent context names (most recent first).
@@ -57,15 +65,41 @@ func ToggleFavorite(name string) (bool, error) {
 	if name == "" {
 		return false, nil
 	}
-	list, _ := Favorites()
-	for i, n := range list {
-		if n == name {
-			list = append(list[:i], list[i+1:]...)
-			return false, writeLines(favoritesPath(), list)
+	var on bool
+	err := withLock(favoritesPath(), func() error {
+		list, err := Favorites()
+		if err != nil {
+			return err
 		}
+		for i, n := range list {
+			if n == name {
+				list = append(list[:i], list[i+1:]...)
+				on = false
+				return writeLines(favoritesPath(), list)
+			}
+		}
+		list = append(list, name)
+		on = true
+		return writeLines(favoritesPath(), list)
+	})
+	return on, err
+}
+
+func withLock(target string, fn func() error) error {
+	if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
+		return err
 	}
-	list = append(list, name)
-	return true, writeLines(favoritesPath(), list)
+	lockPath := target + ".lock"
+	f, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return fmt.Errorf("lock %s: %w", lockPath, err)
+	}
+	defer f.Close()
+	if err := unix.Flock(int(f.Fd()), unix.LOCK_EX); err != nil {
+		return fmt.Errorf("lock %s: %w", lockPath, err)
+	}
+	defer func() { _ = unix.Flock(int(f.Fd()), unix.LOCK_UN) }()
+	return fn()
 }
 
 func readLines(path string) ([]string, error) {
@@ -99,7 +133,7 @@ func writeLines(path string, lines []string) error {
 	}
 	for _, line := range lines {
 		if _, err := f.WriteString(line + "\n"); err != nil {
-			f.Close()
+			_ = f.Close()
 			_ = os.Remove(tmp)
 			return err
 		}

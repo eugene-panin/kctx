@@ -8,8 +8,15 @@ The source of truth is a normal kubeconfig — Lens and kubectl read it as usual
 ## Install
 
 ```bash
+brew tap eugene-panin/tap
+brew install --HEAD eugene-panin/tap/kctx
+```
+
+Or with Go:
+
+```bash
 go install github.com/eugene-panin/kctx/cmd/kctx@latest
-# or from a checkout:
+# from a checkout:
 go build -o kctx ./cmd/kctx && mv kctx "$(go env GOPATH)/bin/"
 kctx completion zsh > "${fpath[1]}/_kctx"   # optional
 ```
