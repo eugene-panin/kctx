@@ -8,6 +8,45 @@ import (
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 )
 
+func TestAddViaKUBECONFIGDoesNotWriteSource(t *testing.T) {
+	dir := t.TempDir()
+	dest := writeCfg(t, dir, "dest", baseDest(t))
+	src := writeCfg(t, dir, "src", oneContextSrc(t))
+
+	t.Setenv("KUBECONFIG", dest)
+	res, err := Add(AddOptions{
+		DestPath:   "", // resolve via KUBECONFIG → ModifyConfig path
+		SourcePath: src,
+		Client:     "acme",
+		Name:       "prod",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Added) != 1 || res.Added[0] != "acme/prod" {
+		t.Fatalf("added: %#v", res.Added)
+	}
+
+	gotDest, err := clientcmd.LoadFromFile(dest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := gotDest.Contexts["acme/prod"]; !ok {
+		t.Fatal("destination missing acme/prod")
+	}
+
+	gotSrc, err := clientcmd.LoadFromFile(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := gotSrc.Contexts["acme/prod"]; ok {
+		t.Fatal("source was modified with destination context")
+	}
+	if _, ok := gotSrc.Contexts["admin@cluster"]; !ok {
+		t.Fatal("source lost original context")
+	}
+}
+
 func writeCfg(t *testing.T, dir, name string, cfg *clientcmdapi.Config) string {
 	t.Helper()
 	path := filepath.Join(dir, name)

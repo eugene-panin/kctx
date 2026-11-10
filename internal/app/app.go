@@ -295,6 +295,9 @@ func (a *application) addCmd() *cobra.Command {
 				var failed bool
 				for _, n := range res.Added {
 					cr := kube.Check(a.resolvePath(), n, 10*time.Second)
+					if !cr.OK {
+						failed = true
+					}
 					if a.jsonOut {
 						_ = json.NewEncoder(a.stdout).Encode(cr)
 						continue
@@ -302,7 +305,6 @@ func (a *application) addCmd() *cobra.Command {
 					if cr.OK {
 						fmt.Fprintf(a.stderr, "check %s: ok %s (%dms)\n", cr.Name, cr.Version, cr.Latency)
 					} else {
-						failed = true
 						fmt.Fprintf(a.stderr, "check %s: %s (%dms)\n", cr.Name, cr.Error, cr.Latency)
 					}
 				}
@@ -452,12 +454,13 @@ func (a *application) mvCmd() *cobra.Command {
 			return nil, cobra.ShellCompDirectiveNoFileComp
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := kube.Move(a.resolvePath(), args[0], args[1]); err != nil {
+			to, err := kube.Move(a.resolvePath(), args[0], args[1])
+			if err != nil {
 				return failf("to должен быть client/cluster", "%v", err)
 			}
-			fmt.Fprintf(a.stdout, "%s\n", args[1])
-			fmt.Fprintf(a.stderr, "moved %s → %s\n", args[0], args[1])
-			_ = recent.Touch(args[1])
+			fmt.Fprintf(a.stdout, "%s\n", to)
+			fmt.Fprintf(a.stderr, "moved %s → %s\n", args[0], to)
+			_ = recent.Touch(to)
 			return nil
 		},
 	}

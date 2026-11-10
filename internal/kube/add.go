@@ -105,11 +105,18 @@ func Add(opts AddOptions) (AddResult, error) {
 			return AddResult{}, fmt.Errorf("context %q references missing user %q", oldName, ctx.AuthInfo)
 		}
 
-		dst.Clusters[newName] = cluster.DeepCopy()
-		dst.AuthInfos[newName] = user.DeepCopy()
+		// Clear LocationOfOrigin so ModifyConfig writes into the destination
+		// kubeconfig, not back into the source file the objects were loaded from.
+		c := cluster.DeepCopy()
+		c.LocationOfOrigin = ""
+		u := user.DeepCopy()
+		u.LocationOfOrigin = ""
 		newCtx := ctx.DeepCopy()
+		newCtx.LocationOfOrigin = ""
 		newCtx.Cluster = newName
 		newCtx.AuthInfo = newName
+		dst.Clusters[newName] = c
+		dst.AuthInfos[newName] = u
 		dst.Contexts[newName] = newCtx
 		added = append(added, newName)
 	}

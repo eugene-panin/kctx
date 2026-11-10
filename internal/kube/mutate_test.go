@@ -17,8 +17,12 @@ func TestMoveAndNamespaceAndExport(t *testing.T) {
 	cfg.CurrentContext = "unsorted/x"
 	dest := writeCfg(t, dir, "dest", cfg)
 
-	if err := Move(dest, "unsorted/x", "acme/prod"); err != nil {
+	gotName, err := Move(dest, "unsorted/x", "acme/prod")
+	if err != nil {
 		t.Fatal(err)
+	}
+	if gotName != "acme/prod" {
+		t.Fatalf("Move name: %q", gotName)
 	}
 	got, err := clientcmd.LoadFromFile(dest)
 	if err != nil {
@@ -51,6 +55,33 @@ func TestMoveAndNamespaceAndExport(t *testing.T) {
 	}
 	if len(exp.Contexts) != 1 || exp.CurrentContext != "acme/prod" {
 		t.Fatalf("export: %+v", exp)
+	}
+}
+
+func TestMoveSanitizesExtraSlash(t *testing.T) {
+	dir := t.TempDir()
+	cfg := clientcmdapi.NewConfig()
+	cfg.Clusters["old"] = &clientcmdapi.Cluster{Server: "https://x"}
+	cfg.AuthInfos["old"] = &clientcmdapi.AuthInfo{Token: "t"}
+	cfg.Contexts["unsorted/x"] = &clientcmdapi.Context{Cluster: "old", AuthInfo: "old"}
+	dest := writeCfg(t, dir, "dest", cfg)
+
+	got, err := Move(dest, "unsorted/x", "acme/prod/v2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "acme/prod-v2" {
+		t.Fatalf("got %q, want acme/prod-v2", got)
+	}
+	loaded, err := clientcmd.LoadFromFile(dest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := loaded.Contexts["acme/prod-v2"]; !ok {
+		t.Fatal("missing sanitized name in file")
+	}
+	if _, ok := loaded.Contexts["acme/prod/v2"]; ok {
+		t.Fatal("raw multi-slash name should not exist")
 	}
 }
 

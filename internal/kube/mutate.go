@@ -7,20 +7,21 @@ import (
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 )
 
-// Move renames a context to newName (client/short). Cluster and user keys
-// follow the new name; the old context (and orphaned keys) are removed.
-func Move(explicitPath, from, to string) error {
+// Move renames a context to client/short. Cluster and user keys follow the new
+// name; the old context (and orphaned keys) are removed. The returned string is
+// the name actually written (extra '/' in the short part become '-').
+func Move(explicitPath, from, to string) (string, error) {
 	from = strings.TrimSpace(from)
 	to = strings.TrimSpace(to)
 	if from == "" || to == "" {
-		return fmt.Errorf("from and to are required")
+		return "", fmt.Errorf("from and to are required")
 	}
 	if !strings.Contains(to, "/") {
-		return fmt.Errorf("destination must be client/cluster, got %q", to)
+		return "", fmt.Errorf("destination must be client/cluster, got %q", to)
 	}
 	client, short := SplitClient(to)
 	if client == "" || short == "" || strings.Contains(client+"/", "//") {
-		return fmt.Errorf("invalid destination %q", to)
+		return "", fmt.Errorf("invalid destination %q", to)
 	}
 	// keep only first slash as client separator
 	if i := strings.IndexByte(to, '/'); i >= 0 {
@@ -30,33 +31,38 @@ func Move(explicitPath, from, to string) error {
 	rules := loadingRules(explicitPath)
 	cfg, err := rules.Load()
 	if err != nil {
-		return fmt.Errorf("load kubeconfig: %w", err)
+		return "", fmt.Errorf("load kubeconfig: %w", err)
 	}
 	ctx, ok := cfg.Contexts[from]
 	if !ok || ctx == nil {
-		return fmt.Errorf("context %q not found", from)
+		return "", fmt.Errorf("context %q not found", from)
 	}
 	if from != to {
 		if _, exists := cfg.Contexts[to]; exists {
-			return fmt.Errorf("context %q already exists", to)
+			return "", fmt.Errorf("context %q already exists", to)
 		}
 	}
 
 	cluster, ok := cfg.Clusters[ctx.Cluster]
 	if !ok || cluster == nil {
-		return fmt.Errorf("context %q references missing cluster %q", from, ctx.Cluster)
+		return "", fmt.Errorf("context %q references missing cluster %q", from, ctx.Cluster)
 	}
 	user, ok := cfg.AuthInfos[ctx.AuthInfo]
 	if !ok || user == nil {
-		return fmt.Errorf("context %q references missing user %q", from, ctx.AuthInfo)
+		return "", fmt.Errorf("context %q references missing user %q", from, ctx.AuthInfo)
 	}
 
 	oldCluster, oldUser := ctx.Cluster, ctx.AuthInfo
-	cfg.Clusters[to] = cluster.DeepCopy()
-	cfg.AuthInfos[to] = user.DeepCopy()
+	c := cluster.DeepCopy()
+	c.LocationOfOrigin = ""
+	u := user.DeepCopy()
+	u.LocationOfOrigin = ""
 	newCtx := ctx.DeepCopy()
+	newCtx.LocationOfOrigin = ""
 	newCtx.Cluster = to
 	newCtx.AuthInfo = to
+	cfg.Clusters[to] = c
+	cfg.AuthInfos[to] = u
 	cfg.Contexts[to] = newCtx
 	if from != to {
 		delete(cfg.Contexts, from)
@@ -65,7 +71,10 @@ func Move(explicitPath, from, to string) error {
 	if cfg.CurrentContext == from {
 		cfg.CurrentContext = to
 	}
-	return writeConfig(rules, cfg)
+	if err := writeConfig(rules, cfg); err != nil {
+		return "", err
+	}
+	return to, nil
 }
 
 func deleteUnused(cfg *clientcmdapi.Config, cluster, user string) {
