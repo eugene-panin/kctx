@@ -1,0 +1,4 @@
+/kctx
+*.exe
+*.test
+/dist/
