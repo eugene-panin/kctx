@@ -2,6 +2,8 @@ package kube
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -27,12 +29,23 @@ func SplitClient(name string) (client, short string) {
 	return client, short
 }
 
+func loadingRules(explicitPath string) *clientcmd.ClientConfigLoadingRules {
+	rules := clientcmd.NewDefaultClientConfigLoadingRules()
+	if explicitPath == "" {
+		return rules
+	}
+	if strings.Contains(explicitPath, string(os.PathListSeparator)) {
+		rules.Precedence = filepath.SplitList(explicitPath)
+		rules.ExplicitPath = ""
+		return rules
+	}
+	rules.ExplicitPath = explicitPath
+	return rules
+}
+
 // Load reads contexts from kubeconfig (KUBECONFIG / explicit path / default).
 func Load(explicitPath string) ([]Entry, error) {
-	rules := clientcmd.NewDefaultClientConfigLoadingRules()
-	if explicitPath != "" {
-		rules.ExplicitPath = explicitPath
-	}
+	rules := loadingRules(explicitPath)
 	cfg, err := rules.Load()
 	if err != nil {
 		return nil, fmt.Errorf("load kubeconfig: %w", err)
@@ -63,11 +76,7 @@ func Load(explicitPath string) ([]Entry, error) {
 
 // Current returns the current context name, or empty if unset.
 func Current(explicitPath string) (string, error) {
-	rules := clientcmd.NewDefaultClientConfigLoadingRules()
-	if explicitPath != "" {
-		rules.ExplicitPath = explicitPath
-	}
-	cfg, err := rules.Load()
+	cfg, err := loadingRules(explicitPath).Load()
 	if err != nil {
 		return "", fmt.Errorf("load kubeconfig: %w", err)
 	}
@@ -76,10 +85,7 @@ func Current(explicitPath string) (string, error) {
 
 // Use sets current-context to name.
 func Use(explicitPath, name string) error {
-	rules := clientcmd.NewDefaultClientConfigLoadingRules()
-	if explicitPath != "" {
-		rules.ExplicitPath = explicitPath
-	}
+	rules := loadingRules(explicitPath)
 	cfg, err := rules.Load()
 	if err != nil {
 		return fmt.Errorf("load kubeconfig: %w", err)
@@ -88,7 +94,7 @@ func Use(explicitPath, name string) error {
 		return fmt.Errorf("context %q not found", name)
 	}
 	cfg.CurrentContext = name
-	if err := clientcmd.ModifyConfig(rules, *cfg, true); err != nil {
+	if err := writeConfig(rules, cfg); err != nil {
 		return fmt.Errorf("set current-context: %w", err)
 	}
 	return nil

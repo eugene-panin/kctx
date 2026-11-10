@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"kctx/internal/app"
+	"github.com/eugene-panin/kctx/internal/app"
 )
 
 func main() {
